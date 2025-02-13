@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import time
 import pandas as pd
+import re  # Untuk mendeteksi tanggal
 
 # Konfigurasi User-Agent agar tidak terdeteksi sebagai bot
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, seperti Gecko) Chrome/110.0.0.0 Safari/537.36"
@@ -29,14 +30,17 @@ search_box.send_keys("Presiden Prabowo Subianto")
 search_box.send_keys(Keys.RETURN)
 
 # Tunggu hasil pencarian muncul
-time.sleep(5)
+time.sleep(2)
 
 # List untuk menyimpan hasil pencarian
 products = []
 
-# Loop untuk mengambil 100+ hasil pencarian (5 halaman)
-for page in range(5):  # Sesuaikan jumlah halaman
-    time.sleep(5)  # Tunggu halaman termuat
+# Pola regex untuk mendeteksi tanggal dalam deskripsi
+date_pattern = r"(\d{1,2} \w+ \d{4})"  # Contoh: "12 Februari 2024"
+
+# Loop untuk mengambil 100+ hasil pencarian (10 halaman)
+for page in range(2):
+    time.sleep(2)  # Tunggu halaman termuat
     
     results = driver.find_elements(By.CSS_SELECTOR, "div.tF2Cxc")
 
@@ -49,7 +53,19 @@ for page in range(5):  # Sesuaikan jumlah halaman
             title = result.find_element(By.TAG_NAME, "h3").text
             link = result.find_element(By.TAG_NAME, "a").get_attribute("href")
             description = result.find_element(By.CLASS_NAME, "VwiC3b").text
-            products.append({"Judul": title, "Deskripsi": description, "Link": link})
+
+            # Coba ambil tanggal dari deskripsi dengan regex
+            release_date = None
+            match = re.search(date_pattern, description)
+            if match:
+                release_date = match.group(1)
+
+            products.append({
+                "Judul": title,
+                "Deskripsi": description,
+                "Tanggal Rilis": release_date,
+                "Link": link
+            })
         except:
             continue
 
@@ -57,7 +73,7 @@ for page in range(5):  # Sesuaikan jumlah halaman
     try:
         next_button = driver.find_element(By.LINK_TEXT, "Berikutnya")  # Tombol "Next" di Google
         next_button.click()
-        time.sleep(5)  # Tunggu halaman termuat
+        time.sleep(2)  # Tunggu halaman termuat
     except:
         print("🚫 Tidak ada halaman berikutnya.")
         break
