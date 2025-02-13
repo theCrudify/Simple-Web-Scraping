@@ -1,87 +1,111 @@
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
-import re  # Untuk mendeteksi tanggal
+import re
+import time
+import random
+from datetime import datetime, timedelta
+from fake_useragent import UserAgent
 
-# Konfigurasi User-Agent agar tidak terdeteksi sebagai bot
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, seperti Gecko) Chrome/110.0.0.0 Safari/537.36"
+# === KONFIGURASI SELENIUM ===
+ua = UserAgent()
 
-options = uc.ChromeOptions()
-options.add_argument(f"user-agent={user_agent}")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-blink-features=AutomationControlled")
+def get_driver():
+    options = uc.ChromeOptions()
+    options.add_argument(f"user-agent={ua.random}")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.headless = False  # Ubah ke True jika ingin lebih stealth
 
-# Hapus headless agar bisa melihat hasil secara langsung
-# options.headless = True  # Jika ingin tetap headless, aktifkan ini
+    driver = uc.Chrome(options=options, use_subprocess=True)
+    return driver
 
-# Jalankan driver Chrome
-driver = uc.Chrome(options=options)
+# === FUNGSI PENGECEKAN CAPTCHA ===
+def check_captcha(driver):
+    if "sorry/index" in driver.current_url or "consent.google.com" in driver.current_url:
+        print("⚠ CAPTCHA terdeteksi! Ganti IP atau gunakan akun Google.")
+        return True
+    return False
 
-# Buka Google Search
-driver.get("https://www.google.com/")
-time.sleep(2)  # Tunggu halaman termuat
+# === SCRAPING GOOGLE ===
+def scrape_google(query, max_results=1000):
+    driver = get_driver()
+    data = []
+    current_time = datetime.now()
 
-# Masukkan kata kunci ke dalam kotak pencarian
-search_box = driver.find_element(By.NAME, "q")
-search_box.send_keys("Presiden Prabowo Subianto")
-search_box.send_keys(Keys.RETURN)
+    driver.get("https://www.google.com/")
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.NAME, "q")))
 
-# Tunggu hasil pencarian muncul
-time.sleep(2)
+    search_box = driver.find_element(By.NAME, "q")
+    search_box.send_keys(query)
+    search_box.send_keys(Keys.RETURN)
+    time.sleep(random.uniform(2, 5))  # Delay acak agar tidak dicurigai
 
-# List untuk menyimpan hasil pencarian
-products = []
+    page = 1
+    while len(data) < max_results:
+        if check_captcha(driver):
+            break  # Keluar jika kena CAPTCHA
 
-# Pola regex untuk mendeteksi tanggal dalam deskripsi
-date_pattern = r"(\d{1,2} \w+ \d{4})"  # Contoh: "12 Februari 2024"
-
-# Loop untuk mengambil 100+ hasil pencarian (10 halaman)
-for page in range(2):
-    time.sleep(2)  # Tunggu halaman termuat
-    
-    results = driver.find_elements(By.CSS_SELECTOR, "div.tF2Cxc")
-
-    if not results:
-        print(f"⚠ Tidak ada hasil yang ditemukan di halaman {page + 1}!")
-        break
-
-    for result in results:
         try:
-            title = result.find_element(By.TAG_NAME, "h3").text
-            link = result.find_element(By.TAG_NAME, "a").get_attribute("href")
-            description = result.find_element(By.CLASS_NAME, "VwiC3b").text
+            # Gunakan alternatif selector jika "div.tF2Cxc" tidak ditemukan
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.tF2Cxc, div.g"))
+            )
+            results = driver.find_elements(By.CSS_SELECTOR, "div.tF2Cxc, div.g")
 
-            # Coba ambil tanggal dari deskripsi dengan regex
-            release_date = None
-            match = re.search(date_pattern, description)
-            if match:
-                release_date = match.group(1)
+            for result in results:
+                try:
+                    title = result.find_element(By.TAG_NAME, "h3").text
+                    link = result.find_element(By.TAG_NAME, "a").get_attribute("href")
+                    description = result.find_element(By.CLASS_NAME, "VwiC3b").text
 
-            products.append({
-                "Judul": title,
-                "Deskripsi": description,
-                "Tanggal Rilis": release_date,
-                "Link": link
-            })
-        except:
-            continue
+                    release_date = current_time.strftime("%d/%m/%Y")  # Default: hari ini
 
-    # Coba pindah ke halaman berikutnya
-    try:
-        next_button = driver.find_element(By.LINK_TEXT, "Berikutnya")  # Tombol "Next" di Google
-        next_button.click()
-        time.sleep(2)  # Tunggu halaman termuat
-    except:
-        print("🚫 Tidak ada halaman berikutnya.")
-        break
+                    data.append({
+                        "Judul": title,
+                        "Deskripsi": description,
+                        "Tanggal Rilis": release_date,
+                        "Link": link
+                    })
+
+                    if len(data) >= max_results:
+                        break
+                except:
+                    continue
+
+            if len(data) >= max_results:
+                break
+
+            # Scroll halaman agar terlihat natural
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(random.uniform(2, 5))
+
+            # Pindah ke halaman berikutnya
+            try:
+                next_button = driver.find_element(By.LINK_TEXT, "Berikutnya")
+                next_button.click()
+                time.sleep(random.uniform(2, 5))
+                page += 1
+            except:
+                print("🚫 Tidak ada halaman berikutnya.")
+                break
+
+        except Exception as e:
+            print(f"⚠ Kesalahan pada halaman {page}: {e}")
+            break
+
+    driver.quit()
+    return data
+
+# === JALANKAN SCRAPING ===
+query = "Berita politik Indonesia 2025"
+data = scrape_google(query, max_results=1000)
 
 # Simpan ke CSV
-df = pd.DataFrame(products)
-df.to_csv("hasil_scraping.csv", index=False)
-print(df)
-
-# Tutup browser
-driver.quit()
+df = pd.DataFrame(data)
+df.to_csv("hasil_scraping_fix.csv", index=False)
+print(f"✅ Scraping selesai! Data yang dikumpulkan: {len(df)}")
