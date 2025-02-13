@@ -31,21 +31,36 @@ search_box.send_keys(Keys.RETURN)
 # Tunggu hasil pencarian muncul
 time.sleep(5)
 
-# Coba ambil data dari hasil pencarian
+# List untuk menyimpan hasil pencarian
 products = []
-results = driver.find_elements(By.CSS_SELECTOR, "div.tF2Cxc")
 
-if not results:
-    print("⚠ Tidak ada hasil yang ditemukan! Coba periksa struktur HTML.")
+# Loop untuk mengambil 100+ hasil pencarian (5 halaman)
+for page in range(5):  # Sesuaikan jumlah halaman
+    time.sleep(5)  # Tunggu halaman termuat
+    
+    results = driver.find_elements(By.CSS_SELECTOR, "div.tF2Cxc")
 
-for result in results:
+    if not results:
+        print(f"⚠ Tidak ada hasil yang ditemukan di halaman {page + 1}!")
+        break
+
+    for result in results:
+        try:
+            title = result.find_element(By.TAG_NAME, "h3").text
+            link = result.find_element(By.TAG_NAME, "a").get_attribute("href")
+            description = result.find_element(By.CLASS_NAME, "VwiC3b").text
+            products.append({"Judul": title, "Deskripsi": description, "Link": link})
+        except:
+            continue
+
+    # Coba pindah ke halaman berikutnya
     try:
-        title = result.find_element(By.TAG_NAME, "h3").text
-        link = result.find_element(By.TAG_NAME, "a").get_attribute("href")
-        description = result.find_element(By.CLASS_NAME, "VwiC3b").text
-        products.append({"Judul": title, "Deskripsi": description, "Link": link})
+        next_button = driver.find_element(By.LINK_TEXT, "Berikutnya")  # Tombol "Next" di Google
+        next_button.click()
+        time.sleep(5)  # Tunggu halaman termuat
     except:
-        continue
+        print("🚫 Tidak ada halaman berikutnya.")
+        break
 
 # Simpan ke CSV
 df = pd.DataFrame(products)
